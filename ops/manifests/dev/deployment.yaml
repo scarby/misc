@@ -1,0 +1,66 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: piecdziesieciogroszowka-dev
+  labels:
+    app: piecdziesieciogroszowka
+    stack: logging
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: piecdziesieciogroszowka
+        stack: logging
+    spec:
+      serviceAccountName: piecdziesieciogroszowka
+      initContainers:
+      - name: set-vm-max-map-count
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command: ['sysctl', '-w', 'vm.max_map_count=262144']
+        securityContext:
+          privileged: true
+      - name: volume-mount-hack
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command: ["sh", "-c", "chown -R 1000:100 /usr/share/piecdziesieciogroszowka/data"]
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/piecdziesieciogroszowka/data
+      containers:
+      - name: piecdziesieciogroszowka
+        image: dev.repo.vestiarirecollective.com/piecdziesieciogroszowka/piecdziesieciogroszowka-oss:6.0.0
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: EJAVA_OPTS
+          value: -Xms1024m -Xmx1024m
+          # ES_MEM_LIMIT=2g
+          # ES_JVM_HEAP=1024m
+        ports:
+        - containerPort: 9200
+        resources:
+          limits:
+            memory: "2147483648"
+        volumeMounts:
+        - name: config-dev
+          mountPath: /usr/share/piecdziesieciogroszowka/piecdziesieciogroszowka.yml
+          subPath: piecdziesieciogroszowka.yml
+        - name: data-dev
+          mountPath: /usr/share/piecdziesieciogroszowka/data
+      # Allow non-root user to access PersistentVolume
+      securityContext:
+        fsGroup: 1000
+      restartPolicy: Always
+      volumes:
+      - name: config-dev
+        configMap:
+          name: piecdziesieciogroszowka-dev
+      - name: data-dev
+        persistentVolumeClaim:
+          claimName: piecdziesieciogroszowka-dev
+      # - name: data
+      #   hostPath:
+      #     path: /srv/piecdziesieciogroszowka-data
